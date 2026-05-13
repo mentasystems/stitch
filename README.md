@@ -109,20 +109,39 @@ stitch loads the original JAX/Flax weights from a flat binary format
 (`STITCH01`), dequantises them from fp16 to fp32 once at startup, and runs
 inference with a KV-cached greedy decoder.
 
-## Limitations
+## What it does (and doesn't)
 
-This is a 26M-parameter model. It is excellent at single-shot function calling
-with explicit, well-typed tool schemas, and *not* a general-purpose LLM. In
-particular:
+stitch wraps a 26M-parameter model trained specifically for **single-shot
+function-call extraction**. It is not a chatbot, not a code generator, and not
+a reasoning engine. Concretely:
 
-- One tool call per query; no multi-step planning.
-- It can hallucinate string-typed arguments (IDs, names) — it has no way to
-  know your business data.
-- Truncates inputs longer than 1024 tokens.
-- No streaming output — `Call` returns the full result at once.
+**Works well:**
 
-For anything more complex (multi-step reasoning, conversation, retrieval), use
-a larger model.
+- Picking one tool from a small catalogue (≤5 distinct tools)
+- Extracting named entities into typed parameters (locations, contacts, song
+  names, list items)
+- Short, imperative phrasings ("weather in Tokyo", "Play Despacito",
+  "Send Bob hello")
+- Multiple languages — needle was trained multilingual; English and Spanish
+  are noticeably reliable
+
+**Does NOT work:**
+
+- Free-form conversation — no chat training, decoder is forced to emit a
+  tool-call JSON
+- Code, SQL, or shell command synthesis — the model copies query fragments
+  into string params, it doesn't compose syntax
+- Multi-step planning ("first do X then Y") — one call per query
+- Long inputs — truncated at 1024 tokens
+- Phrasing variations — quality is sensitive to wording. *"weather in Tokyo"*
+  works; *"What is the weather in Tokyo?"* often returns `[]`. Treat the model
+  as an entity extractor for ONE specific phrasing pattern per tool
+
+**Other quirks:**
+
+- Numeric arguments are unreliable; the model often drops them.
+- More than ~5 tools degrades selection accuracy noticeably.
+- Greedy decoding only — output is deterministic for a given (query, tools).
 
 ## Re-exporting the weights
 
