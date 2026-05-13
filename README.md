@@ -32,11 +32,21 @@ download step. Just `go get` and run.
 
 ## Install
 
+As a library:
+
 ```bash
 go get github.com/mentasystems/stitch
 ```
 
-The first build pulls in the 50 MiB embedded weights as part of the module.
+As a CLI to try it without writing code:
+
+```bash
+go install github.com/mentasystems/stitch/cmd/stitch@latest
+stitch -q "What's the weather in Madrid?"
+```
+
+Either way, the first build pulls in the 50 MiB embedded weights as part of the
+module.
 
 ## API
 
