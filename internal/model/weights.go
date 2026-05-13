@@ -83,6 +83,24 @@ type Weights struct {
 	Decoder []DecoderLayer
 }
 
+// numelOf returns the product of the shape's dimensions.
+func numelOf(shape []int) int {
+	n := 1
+	for _, d := range shape {
+		n *= d
+	}
+	return n
+}
+
+// in1 returns the second-to-last dimension (the "in_dim" for Dense kernels).
+// For (in, out) returns in. For (L, in, out) returns in.
+func in1(shape []int) int {
+	if len(shape) < 2 {
+		return 1
+	}
+	return shape[len(shape)-2]
+}
+
 // Load parses a weights.bin produced by internal/export/export.py.
 func Load(r io.Reader) (*Weights, error) {
 	var magic [8]byte
@@ -124,17 +142,59 @@ func Load(r io.Reader) (*Weights, error) {
 	}
 
 	// Cache name->[]float32 lookup; each tensor is independently dequantised.
+	// fp16 → fp32 is a direct cast. int8 → fp32 multiplies by the matching
+	// per-output-column scale tensor ("<name>_scale"). The matmul code path
+	// is identical for both formats once this is done.
 	tensors := make(map[string][]float32, len(hdr.Tensors))
 	for name, ti := range hdr.Tensors {
-		if ti.DType != "fp16" {
-			return nil, fmt.Errorf("tensor %q: unsupported dtype %q", name, ti.DType)
-		}
 		numel := 1
 		for _, d := range ti.Shape {
 			numel *= d
 		}
-		buf := make([]float32, numel)
-		tensor.DequantizeF16(blob[ti.Offset:ti.Offset+ti.NBytes], buf)
+		switch ti.DType {
+		case "fp16":
+			buf := make([]float32, numel)
+			tensor.DequantizeF16(blob[ti.Offset:ti.Offset+ti.NBytes], buf)
+			tensors[name] = buf
+		case "int8":
+			// Defer until we've parsed the matching scale tensor. We need
+			// shape + scales fp16-decoded first; second pass handles them.
+		default:
+			return nil, fmt.Errorf("tensor %q: unsupported dtype %q", name, ti.DType)
+		}
+	}
+	// Second pass: dequantise int8 tensors using their matching scale tensor.
+	for name, ti := range hdr.Tensors {
+		if ti.DType != "int8" {
+			continue
+		}
+		scaleName := name + "_scale"
+		scaleVec, ok := tensors[scaleName]
+		if !ok {
+			return nil, fmt.Errorf("tensor %q: missing %q", name, scaleName)
+		}
+		raw := blob[ti.Offset : ti.Offset+ti.NBytes]
+		// Per-output-column dequant: for a tensor of shape (..., in, out), the
+		// trailing 'out' axis carries the scale. Walk the int8 buffer in
+		// (in, out) blocks per leading slab and multiply by scales[out].
+		out := ti.Shape[len(ti.Shape)-1]
+		buf := make([]float32, numelOf(ti.Shape))
+		// Number of (in, out) slabs (the product of all leading dims).
+		slabs := len(buf) / (in1(ti.Shape) * out)
+		scalePerSlab := len(scaleVec) / slabs
+		if scalePerSlab != out {
+			return nil, fmt.Errorf("tensor %q: scale shape mismatch (got %d per slab, want %d)", name, scalePerSlab, out)
+		}
+		stride := in1(ti.Shape) * out
+		for s := 0; s < slabs; s++ {
+			scl := scaleVec[s*out : (s+1)*out]
+			rawOff := s * stride
+			dstOff := s * stride
+			for i := 0; i < stride; i++ {
+				val := int8(raw[rawOff+i])
+				buf[dstOff+i] = float32(val) * scl[i%out]
+			}
+		}
 		tensors[name] = buf
 	}
 
