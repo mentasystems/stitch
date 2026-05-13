@@ -23,10 +23,10 @@ download step. Just `go get` and run.
 | | |
 |---|---|
 | **Single import** | `stitch.New()` — that's it |
-| **Embedded model** | 50 MiB of fp16 weights baked into the binary via `go:embed` |
+| **Embedded model** | 29 MiB of int8-quantised weights baked into the binary via `go:embed` |
 | **Pure Go** | Zero cgo, no system libraries, cross-compiles anywhere Go runs |
 | **Fast** | ~300 ms per inference on Apple Silicon CPU (KV-cached decoder) |
-| **Small** | ~26M parameters, ~60 MB binary including weights and tokenizer |
+| **Small** | ~26M parameters, ~30 MB binary including weights and tokenizer |
 | **Greedy decoding** | Deterministic output for a given (query, tools) pair |
 | **License** | MIT |
 
@@ -58,7 +58,7 @@ oye add milk to groceries       # ✓ added to ~/.oye/lists/default.txt
 oye                             # REPL mode
 ```
 
-Either way, the first build pulls in the 50 MiB embedded weights as part of the
+Either way, the first build pulls in the 29 MiB embedded weights as part of the
 module.
 
 ## API
@@ -118,9 +118,16 @@ Gemini 3.1 by Cactus Compute. Architecture:
 - ZCRMSNorm everywhere, tied embeddings for output projection
 - d_model = 512, max sequence = 1024
 
-stitch loads the original JAX/Flax weights from a flat binary format
-(`STITCH01`), dequantises them from fp16 to fp32 once at startup, and runs
-inference with a KV-cached greedy decoder.
+stitch loads weights from a flat binary format (`STITCH01`): the Dense
+kernels (q/k/v/out projections) are stored as **per-output-column int8** plus
+a fp16 scale vector; norms, gates, and the embedding table stay fp16. At load
+time everything is dequantised to fp32 in memory once and the decoder runs a
+KV-cached greedy loop.
+
+Quantisation impact, measured on a 60-prompt EN+ES corpus against the
+unquantised fp16 reference: 56/60 prompts produce identical output tokens,
+19/19 valid-JSON prompts pick the same tool, latency is identical (both paths
+matmul in fp32 once loaded). int8 saves ~42% on disk / binary size.
 
 ## What it does (and doesn't)
 
