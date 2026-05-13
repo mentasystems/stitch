@@ -38,11 +38,24 @@ As a library:
 go get github.com/mentasystems/stitch
 ```
 
-As a CLI to try it without writing code:
+As a generic CLI (bring your own tool schema):
 
 ```bash
 go install github.com/mentasystems/stitch/cmd/stitch@latest
 stitch "What's the weather in Madrid?"
+```
+
+As an opinionated demo assistant with real handlers (weather over HTTP,
+background timers with macOS notifications, list IO, app launching):
+
+```bash
+go install github.com/mentasystems/stitch/cmd/oye@latest
+
+oye weather in Madrid           # 🌤  madrid: ⛈️ +18°C
+oye set timer 10 min            # ⏰ timer started: 10min in 10m0s
+oye Play Bad Bunny              # ▶ playing: Bad Bunny (Music.app)
+oye add milk to groceries       # ✓ added to ~/.oye/lists/default.txt
+oye                             # REPL mode
 ```
 
 Either way, the first build pulls in the 50 MiB embedded weights as part of the

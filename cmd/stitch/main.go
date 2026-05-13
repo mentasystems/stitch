@@ -74,7 +74,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Flags:")
 		flag.PrintDefaults()
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, exampleHelp)
+		fmt.Fprint(os.Stderr, exampleHelp)
 	}
 	flag.Parse()
 
