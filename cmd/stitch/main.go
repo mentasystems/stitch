@@ -1,4 +1,12 @@
-// Example: a one-shot CLI that reads a query, prints the parsed tool call.
+// Demo CLI: pass a natural-language query as the first argument, get back the
+// parsed tool call on stdout.
+//
+//	stitch "What's the weather in Madrid?"
+//	stitch Send hello to Alice
+//
+// Multiple positional args are joined with spaces, so quoting is optional. If
+// no query is given a default sample is used so `stitch` with no args still
+// produces output.
 package main
 
 import (
@@ -6,14 +14,29 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mentasystems/stitch"
 )
 
+const defaultQuery = "What's the weather in San Francisco?"
+
 func main() {
-	query := flag.String("q", "What's the weather in San Francisco?", "user query")
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [query...]\n\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "Runs needle (26M tool-calling model) on the given natural-language query")
+		fmt.Fprintln(os.Stderr, "and prints the resulting tool call(s) as JSON on stdout.")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Example:")
+		fmt.Fprintf(os.Stderr, "  %s What is the weather in Madrid?\n", os.Args[0])
+	}
 	flag.Parse()
+
+	query := strings.Join(flag.Args(), " ")
+	if query == "" {
+		query = defaultQuery
+	}
 
 	tools := []stitch.Tool{
 		{Name: "get_weather", Parameters: map[string]string{"location": "string"}},
@@ -30,7 +53,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "loaded in %s\n", time.Since(t0).Round(time.Millisecond))
 
 	t1 := time.Now()
-	calls, err := m.Call(*query, tools)
+	calls, err := m.Call(query, tools)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "call:", err)
 		os.Exit(1)

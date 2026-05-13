@@ -42,7 +42,7 @@ As a CLI to try it without writing code:
 
 ```bash
 go install github.com/mentasystems/stitch/cmd/stitch@latest
-stitch -q "What's the weather in Madrid?"
+stitch "What's the weather in Madrid?"
 ```
 
 Either way, the first build pulls in the 50 MiB embedded weights as part of the
